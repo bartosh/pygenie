@@ -37,6 +37,71 @@ class DefStats(Stats):
     __repr__ = __str__
 
 
+class FlatStats(object):
+    '''Create list of flat stats
+
+       stats in init and flattenStats is of type class Stats
+       flatStats is a list of lists with each list containing
+       'C/M/F/X', Name, complexity
+       summaryStats is a dictionary with keys X/C/M/F/T and value is
+       a list of [count, complexity]
+    '''
+
+    def __init__(self, stats=None):
+        self.summaryStats = {'X':[0, 0],
+                             'C':[0, 0],
+                             'M':[0, 0],
+                             'F':[0, 0],
+                             'T':[0, 0]}
+        if stats:
+            self.flatStats = self.flattenStats(stats)
+            self.computeSummary()
+
+    def flattenStats(self, stats):
+        def flatten(stats, ns=None):
+            if not ns:
+                yield 'X', stats.name, stats.complexity
+            for s in stats.classes:
+                name = '.'.join(filter(None, [ns, s.name]))
+                yield 'C', name, s.complexity
+                for x in s.functions:
+                    fname = '.'.join([name, x.name])
+                    yield 'M', fname, x.complexity
+            for s in stats.functions:
+                name = '.'.join(filter(None, [ns, s.name]))
+                yield 'F', name, s.complexity
+
+        return [t for t in flatten(stats)]
+
+    def computeSummary(self):
+        count = 0
+        complexity = 0
+        for row in self.flatStats:
+            self.summaryStats[row[0]][0] = self.summaryStats[row[0]][0] + 1
+            self.summaryStats['T'][0] = self.summaryStats['T'][0] + 1
+            self.summaryStats[row[0]][1] = self.summaryStats[row[0]][1] + row[2]
+            self.summaryStats['T'][1] = self.summaryStats['T'][1] + row[2]
+
+    def __add__(self, other):
+        '''addition is only for summary stats'''
+        result = FlatStats()
+        for idx in 'XCMFT':
+            for i in range(2):
+                result.summaryStats[idx][i] = self.summaryStats[idx][i] + other.summaryStats[idx][i]
+        return result
+
+    def __str__(self):
+        string = '''----------------------------------
+Type         Count      Complexity
+----------------------------------'''
+        for idx in 'XCMFT':
+            string = string + '''
+%s        %8d         %8d''' % (idx, self.summaryStats[idx][0], self.summaryStats[idx][1])
+        string = (string + '\n' +
+'----------------------------------\n')
+        return string
+
+
 class CCVisitor(ASTVisitor):
     """Encapsulates the cyclomatic complexity counting."""
 
@@ -88,8 +153,11 @@ class CCVisitor(ASTVisitor):
         self.stats.complexity += 1
 
 
-def measure_complexity(ast, module_name=None):
-    return CCVisitor(ast, description=module_name).stats
+def measure_complexity(ast, module_name=None, stats=None):
+    try:
+        return FlatStats(CCVisitor(ast, stats, module_name).stats)
+    except Exception:
+        return None 
 
 
 class Table(object):
@@ -111,21 +179,26 @@ class Table(object):
     def __nonzero__(self):
         return len(self.rows)
 
-
 class PrettyPrinter(object):
 
-    def __init__(self, out, verbose=False):
+    def __init__(self, out, complexity=False, threshold=7, summary=False):
         self.out = out
-        self.verbose = verbose
+        self.complexity = complexity
+        self.threshold = threshold
+        self.summary = summary
 
     def pprint(self, filename, stats):
-        self.out.write('File: %s\n' % filename)
+        if self.complexity or self.summary:
+            self.out.write('File: %s\n' % filename)
+            if self.complexity:
+                self.pprint_complexity(stats.flatStats)
+            if self.summary:
+                self.pprint_summary(stats)
+            self.out.write('\n')
 
-        stats = self.flatten_stats(stats)
-
-        if not self.verbose:
-            # filter out suites with low complexity numbers
-            stats = (row for row in stats if row[-1] > 7)
+    def pprint_complexity(self, stats):
+        # filter out suites with low complexity numbers
+        stats = (row for row in stats if row[-1] > self.threshold)
 
         stats = sorted(stats, lambda a, b: cmp(b[2], a[2]))
 
@@ -134,9 +207,13 @@ class PrettyPrinter(object):
             self.pprint_table(table)
         else:
             self.out.write('This code looks all good!\n')
-        self.out.write('\n')
+
+    def pprint_summary(self, stats):
+        self.out.write('Summary\n')
+        self.out.write(str(stats))
 
     def pprint_table(self, table):
+        self.out.write('-' * (sum(table.max_col_sizes) + len(table.headings) - 1) + '\n')
         for n, col in enumerate(table.headings):
             self.out.write(str(col).ljust(table.max_col_sizes[n] + 1))
         self.out.write('\n')
@@ -145,21 +222,5 @@ class PrettyPrinter(object):
             for n, col in enumerate(row):
                 self.out.write(str(col).ljust(table.max_col_sizes[n] + 1))
             self.out.write('\n')
-
-    def flatten_stats(self, stats):
-        def flatten(stats, ns=None):
-            if not ns:
-                yield 'X', stats.name, stats.complexity
-            for s in stats.classes:
-                name = '.'.join(filter(None, [ns, s.name]))
-                yield 'C', name, s.complexity
-                for x in s.functions:
-                    fname = '.'.join([name, x.name])
-                    yield 'M', fname, x.complexity
-            for s in stats.functions:
-                name = '.'.join(filter(None, [ns, s.name]))
-                yield 'F', name, s.complexity
-
-        return [t for t in flatten(stats)]
-
+        self.out.write('-' * (sum(table.max_col_sizes) + len(table.headings) - 1) + '\n')
 

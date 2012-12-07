@@ -1,4 +1,6 @@
-from cc import measure_complexity
+#!/usr/bin/env python
+
+from genie.cc import measure_complexity
 
 
 def dedent(s):
@@ -109,9 +111,7 @@ simple_complexity_snippets = [
 
 def test_snippets():
     def _assert(expected_complexity, code):
-        stats = measure_complexity(code)
-        print stats.complexity, expected_complexity
-        assert stats.complexity == expected_complexity
+        assert measure_complexity(code).flatStats[0][2] == expected_complexity
     for snippet in simple_complexity_snippets:
         yield _assert, snippet[0], snippet[1]
 
@@ -121,7 +121,7 @@ def test_empty_def():
         def f():
             pass
     """)
-    stats = measure_complexity(code)
+    stats = measure_complexity(code).flatStats
     assert stats.complexity == 1
     assert stats.functions[0].complexity == 1
 
@@ -134,7 +134,7 @@ def test_def():
                 else:
                     pass
     ''')
-    stats = measure_complexity(code)
+    stats = measure_complexity(code).flatStats
     assert stats.classes == []
     assert len(stats.functions) == 1
     assert stats.functions[0].name == 'f'
@@ -148,7 +148,7 @@ def test_module():
             else:
                 pass
     ''')
-    stats = measure_complexity(code)
+    stats = measure_complexity(code).flatStats
     assert stats.name == '<module>'
     assert stats.classes == []
     assert stats.functions == []
@@ -164,7 +164,7 @@ def test_class():
                     if False:
                         pass
     ''')
-    stats = measure_complexity(code)
+    stats = measure_complexity(code).flatStats
     assert stats.name == '<module>'
     assert stats.classes[0].name == 'A'
     assert stats.classes[0].complexity == 2
@@ -186,7 +186,7 @@ def test_loops():
                     if x % 2:
                         print 'odd'
     ''')
-    stats = measure_complexity(code)
+    stats = measure_complexity(code).flatStats
     f, g, h = stats.functions
     assert f.complexity == 2
     assert g.complexity == 2
@@ -202,7 +202,7 @@ def test_lambdas():
             incr = lambda x: x + 1
             decr = lambda x: x - 1
     ''')
-    stats = measure_complexity(code)
+    stats = measure_complexity(code).flatStats
     incr, decr, f = stats.functions
     assert incr.complexity == 1
     assert decr.complexity == 1
@@ -219,7 +219,7 @@ def test_nested_classes():
                     pass
 
     ''')
-    stats = measure_complexity(code)
+    stats = measure_complexity(code).flatStats
     assert stats.classes[0].name == 'A'
     assert stats.classes[0].complexity == 2
     assert stats.classes[0].classes[0].name == 'Inner'
